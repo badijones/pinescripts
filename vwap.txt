@@ -1,0 +1,301 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © oatmealtrex
+
+//@version=4
+study(title="VWAP multi bands v2", shorttitle="VWAP multi bands v2", overlay=true)
+
+
+computeVWAP(src, isNewPeriod, stDevMultiplier) =>
+	var float sumSrcVol = na
+	var float sumVol = na
+    var float sumSrcSrcVol = na
+    
+	sumSrcVol := isNewPeriod ? src * volume : src * volume + sumSrcVol[1]
+	sumVol := isNewPeriod ? volume : volume + sumVol[1]
+	// sumSrcSrcVol calculates the dividend of the equation that is later used to calculate the standard deviation
+	sumSrcSrcVol := isNewPeriod ? volume * pow(src, 2) : volume * pow(src, 2) + sumSrcSrcVol[1]
+	
+	_vwap = sumSrcVol / sumVol
+	variance = sumSrcSrcVol / sumVol - pow(_vwap, 2)
+	variance := variance < 0 ? 0 : variance
+	stDev = sqrt(variance)
+	
+	lowerBand = _vwap - stDev * 1
+	upperBand = _vwap + stDev * 1
+	lowerBand2 = _vwap - stDev * 2.2
+	upperBand2 = _vwap + stDev * 2.2
+	lowerBand3 = _vwap - stDev * 3
+	upperBand3 = _vwap + stDev * 3
+	
+	[_vwap, lowerBand, upperBand,lowerBand2, upperBand2,lowerBand3, upperBand3]
+
+hideonDWM = input(true, title="Hide VWAP on 1D or Above", group="VWAP Settings")
+var anchor = input(defval = "Session", title="Anchor Period", type=input.string, 
+ options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century", "Earnings", "Dividends", "Splits"], group="VWAP Settings")
+src = input(title = "Source", type = input.source, defval = hlc3, group="VWAP Settings")
+offset = input(0, title="Offset", group="VWAP Settings")
+
+showBands = input(true, title="Calculate Bands", group="Standard Deviation Bands Settings")
+stdevMult = input(1.0, title="Bands Multiplier", group="Standard Deviation Bands Settings")
+
+timeChange(period) =>
+	change(time(period))
+
+new_earnings = earnings(syminfo.tickerid, earnings.actual, barmerge.gaps_on, barmerge.lookahead_on)
+new_dividends = dividends(syminfo.tickerid, dividends.gross, barmerge.gaps_on, barmerge.lookahead_on)
+new_split = splits(syminfo.tickerid, splits.denominator, barmerge.gaps_on, barmerge.lookahead_on)
+
+isNewPeriod = anchor == "Earnings" ? new_earnings :
+ anchor == "Dividends" ? new_dividends :
+ anchor == "Splits" ? new_split :
+ na(src[1]) ? true :
+ anchor == "Session" ? timeChange("D") :
+ anchor == "Week" ? timeChange("W") :
+ anchor == "Month" ? timeChange("M") :
+ anchor == "Quarter" ? timeChange("3M") :
+ anchor == "Year" ? timeChange("12M") :
+ anchor == "Decade" ? timeChange("12M") and year % 10 == 0 :
+ anchor == "Century" ? timeChange("12M") and year % 100 == 0 :
+ false
+	
+float vwapValue = na
+float std = na
+float upperBandValue = na
+float lowerBandValue = na
+float upper2BandValue = na
+float lower2BandValue = na
+float upper3BandValue = na
+float lower3BandValue = na
+
+
+is1to5Min = (timeframe.period == "1" or timeframe.period == "3"  )
+
+if not (hideonDWM and not is1to5Min)
+    [_vwap, bottom, top,bottom2,top2,bottom3,top3] = computeVWAP(src, isNewPeriod, stdevMult)
+    vwapValue := _vwap
+    upperBandValue := showBands ? top : na
+    lowerBandValue := showBands ? bottom : na
+    upper2BandValue := showBands ? top2 : na
+    lower2BandValue := showBands ? bottom2 : na
+    upper3BandValue := showBands ? top3 : na
+    lower3BandValue := showBands ? bottom3 : na
+
+
+
+
+
+
+
+// 1. Calculating vwapValue's rate of change 
+k_num = input(defval=1, title="The number of candlesticks", minval=1, maxval=14, type=input.integer, step=1, group="Line color control", 
+     tooltip="Calculate the average of the rate of change of the VWAP value of the number of bars, which is equivalent to using the number of bars to weight the time")
+change_rate_threshold = input(defval=0.3, title="Rate of change threshold", minval=0.1, maxval=4.0, type=input.float, step=0.01, group="Line color control", 
+     tooltip="The threshold of the color change of the line, the change rate of the VWAP value is larger or smaller than this to change the color, otherwise the original color will continue")
+change_rate = (vwapValue - nz(vwapValue[1], 0)) / atr(14)
+
+// 2. Controlling Line's color based on the average change rate against ATR
+change_rate_avg = 0.0
+var color_flag = 1
+
+// 3. Calculating average change rate in the past k-lines
+for i = 0 to (k_num - 1)
+    change_rate_avg := change_rate_avg + change_rate[i]
+change_rate_avg := change_rate_avg / k_num
+
+if color_flag == 1 and change_rate_avg > -change_rate_threshold
+    color_flag := 1
+if color_flag == 1 and change_rate_avg <= -change_rate_threshold
+    color_flag := 0
+if color_flag == 0 and change_rate_avg >= change_rate_threshold
+    color_flag := 1
+if color_flag == 0 and change_rate_avg < change_rate_threshold
+    color_flag := 0
+
+
+lineTransp = 55
+
+vwapBand = plot(vwapValue, title="VWAP", color=color_flag == 1 ? color.new(#7e9e08,15) : color.new(#ff0000, 2), offset=offset, linewidth=3)
+
+upperBand = plot(upperBandValue, title="Upper Band", color=color.new(color.green,lineTransp), offset=offset)
+lowerBand = plot(lowerBandValue, title="Lower Band", color=color.new(color.green,lineTransp), offset=offset)
+upperBand2 = plot(upper2BandValue, title="Upper2 Band", color=color.new(color.orange,lineTransp), offset=offset)
+lowerBand2 = plot(lower2BandValue, title="Lower2 Band", color=color.new(color.orange,lineTransp), offset=offset)
+upperBand3 = plot(upper3BandValue, title="Upper3 Band", color=color.new(color.red,lineTransp), offset=offset)
+lowerBand3 = plot(lower3BandValue, title="Lower3 Band", color=color.new(color.red,lineTransp), offset=offset)
+
+
+
+
+
+hilight3h = close > upper2BandValue ? color.new(color.green, 90) : na
+hilight2h = close > upperBandValue and close < upper2BandValue ? color.new(color.green, 90) : na
+hilight1h = close > vwapValue and close < upperBandValue ? color.new(color.green, 90) : na
+hilight1l = close < vwapValue and close > lowerBandValue ? color.new(color.green, 90) : na
+hilight2l = close < lowerBandValue and close > lower2BandValue ? color.new(color.green, 90) : na
+hilight3l = close < lower2BandValue ? color.new(color.green, 90) : na
+
+
+
+// fill(upperBand3, upperBand2, title="Bands Fill", color= hilight3h)
+// fill(upperBand2, upperBand, title="Bands Fill", color= hilight2h)
+// fill(upperBand, vwapBand, title="Bands Fill", color= hilight1h)
+// fill(vwapBand, lowerBand, title="Bands Fill", color= hilight1l)
+// fill(lowerBand, lowerBand2, title="Bands Fill", color= hilight2l)
+// fill(lowerBand2, lowerBand3, title="Bands Fill", color= hilight3l)
+
+
+
+
+// TEST 1st section
+// Variables for Conditions
+
+percentLong = round(( (close - lower3BandValue) / (upper3BandValue - lower3BandValue)) * 100,2)
+rangeHeight = upper3BandValue - lower3BandValue
+stalledRange = (hour > 1 and (rangeHeight < 750))
+
+
+
+//Consecutive crosses
+lower3Cross = cross(close,lower3BandValue)
+lower2Cross = cross(close,lower2BandValue)
+lowerCross = cross(close,lowerBandValue)
+vwapCross = cross(close,vwapValue)
+upperCross = cross(close,upperBandValue)
+upper2Cross = cross(close,upper2BandValue)
+upper3Cross = cross(close,upper3BandValue)
+
+
+var countlower3Cross = 0
+var countlower2Cross = 0
+var countlowerCross = 0
+var countvwapCross = 0
+var countupperCross = 0
+var countupper2Cross = 0
+var countupper3Cross = 0
+
+
+countlower3Cross := (lower2Cross or lowerCross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lower3Cross ? countlower3Cross + 1 : countlower3Cross
+countlower2Cross := ( lower3Cross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lower2Cross ? countlower2Cross + 1 : countlower2Cross
+countlowerCross := (lower3Cross or lower2Cross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lowerCross ? countlowerCross + 1 : countlowerCross
+countvwapCross := (lower3Cross or lower2Cross or lowerCross or upperCross or upper2Cross or upper3Cross) ? 0 : vwapCross ? countvwapCross + 1 : countvwapCross
+countupperCross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upper2Cross or upper3Cross) ? 0 : upperCross ? countupperCross + 1 : countupperCross
+countupper2Cross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upperCross or upper3Cross) ? 0 : upper2Cross ? countupper2Cross + 1 : countupper2Cross
+countupper3Cross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upperCross or upper2Cross) ? 0 : upper3Cross ? countupper3Cross + 1 : countupper3Cross
+
+
+
+// SET UP LONG and SHORT CONDITIONS
+lastUpper2Cross = barssince(crossover(close,upper2BandValue))
+lastLower2Cross = barssince(crossover(close,lower2BandValue))
+
+lastLower2Touch = barssince(low < lower2BandValue)
+longCond2 = crossover(close,upperBandValue) and   (lastUpper2Cross >  lastLower2Cross )
+
+priceDrop =  barssince((close[1] > open[1]) and close[1] >= open and (open > close))
+
+longCondPriceDrop = priceDrop > 1 ?  (open[priceDrop] - close ) > 350 ? close : na : na
+
+
+plotshape(longCondPriceDrop, title=".", text=".", textcolor=color.white, style=shape.labelup, location=location.belowbar, color=color.purple, transp=0, size=size.tiny)
+
+
+longCond =  (lastLower2Touch < 200  and lastLower2Touch > 2) and ( (  (upper2BandValue - lower2BandValue) > 200)  and (percentLong <=25 or (close < lower2BandValue  and barstate.isrealtime) or low  < lower2BandValue  or(longCond2)    )) and stalledRange == false and (countlower2Cross < 1) and (hour >= 1 )
+
+shortCond =( (( high - low[barssince(longCond)])/ low[barssince(longCond)]) *1000) > 10
+
+CondInit = 0
+CondInit := longCond ? 1 : shortCond ? -1 : CondInit[1]
+longCondition = longCond and CondInit[1] == -1
+shortCondition = shortCond and CondInit[1] == 1
+
+
+
+// STOP LOSS
+stopLossBars = 7
+lineLow1 = CondInit[1] == -1 ? lowest(low,stopLossBars) : lowest(low,stopLossBars) 
+lineHigh1 = CondInit[1] == 1 ? highest(high,stopLossBars) : highest(high,stopLossBars)
+stopLossLine = lineHigh1-(lineHigh1 * .008)
+
+
+// plot(lineHigh1, title="High Price Line", linewidth = 2, color =color.new(color.blue, 80))
+// plot( stopLossLine,  title="Stop Price Line", linewidth = 2, color =color.new(color.purple, 80))
+// plot(lineLow1, title="Low Price Line", linewidth = 2, color =color.new(color.white, 80))
+
+
+
+
+// VWAP Level Line
+lineDir = extend.both
+lineColor = color.new(color.white,50)
+lenBack = 1
+lenBack2 = lenBack -1
+
+var ln_max = line.new(na, na, na, na, extend=lineDir, color=lineColor)
+H2=max(vwapValue[lenBack], vwapValue[lenBack2])
+
+// V0 = vwapValue[0]
+// V1 = vwapValue[1]
+V0 = H2
+V1 = H2
+
+showLevel = input(false, title="Show VWAP Level Line", group="VWAP SETTINGS")
+
+if bar_index > 1 and showLevel
+    line.set_xy1(ln_max, bar_index - lenBack, V0)
+    line.set_xy2(ln_max, bar_index, V1)
+
+
+
+
+// Current Profit
+currentProfit = 0.0
+currentPctProfit = 0.0
+barsSinceLl = 0
+
+barsSinceLl := barssince(longCondition or shortCondition)
+
+
+if CondInit[1] == 1
+    currentProfit := close[0] - close[barsSinceLl]
+
+if CondInit[1] == -1
+    currentProfit := close[barsSinceLl] - close
+
+
+
+
+
+
+
+
+// Print Buy / Sell labels
+
+longLabel = longCondition ? close : na
+shortLabel = shortCondition ? close : na
+
+
+
+// // Execute Strategy / backtesting
+// if longCondition
+//     strategy.entry("buy", strategy.long, 1, when=strategy.position_size <= 0,comment="Long2")
+
+// if shortCondition
+// 	strategy.close("buy")
+
+
+
+
+
+
+plotshape(shortLabel, title=".", text=".", textcolor=color.white, style=shape.circle, location=location.abovebar, color=color.red, transp=0, size=size.tiny)
+alertcondition(shortLabel, title="Short", message='Short')
+
+
+plotshape(longLabel, title="long", text="Long", textcolor=color.white, style=shape.labelup, location=location.belowbar, color=color.green, transp=0, size=size.tiny)
+alertcondition(longLabel, title="Long", message='Long')
+
+
+
+
+
+
