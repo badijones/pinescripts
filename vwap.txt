@@ -2,7 +2,7 @@
 // © oatmealtrex
 
 //@version=4
-study(title="VWAP multi bands v2", shorttitle="VWAP multi bands v2", overlay=true)
+study(title="VWAP v3", shorttitle="VWAP v3", overlay=true)
 
 
 computeVWAP(src, isNewPeriod, stDevMultiplier) =>
@@ -68,7 +68,7 @@ float upper3BandValue = na
 float lower3BandValue = na
 
 
-is1to5Min = (timeframe.period == "1" or timeframe.period == "3"  )
+is1to5Min = (timeframe.period == "1" or timeframe.period == "3" or timeframe.period == "5" or timeframe.period == "10" or timeframe.period == "15" )
 
 if not (hideonDWM and not is1to5Min)
     [_vwap, bottom, top,bottom2,top2,bottom3,top3] = computeVWAP(src, isNewPeriod, stdevMult)
@@ -134,18 +134,6 @@ hilight1l = close < vwapValue and close > lowerBandValue ? color.new(color.green
 hilight2l = close < lowerBandValue and close > lower2BandValue ? color.new(color.green, 90) : na
 hilight3l = close < lower2BandValue ? color.new(color.green, 90) : na
 
-
-
-// fill(upperBand3, upperBand2, title="Bands Fill", color= hilight3h)
-// fill(upperBand2, upperBand, title="Bands Fill", color= hilight2h)
-// fill(upperBand, vwapBand, title="Bands Fill", color= hilight1h)
-// fill(vwapBand, lowerBand, title="Bands Fill", color= hilight1l)
-// fill(lowerBand, lowerBand2, title="Bands Fill", color= hilight2l)
-// fill(lowerBand2, lowerBand3, title="Bands Fill", color= hilight3l)
-
-
-
-
 // TEST 1st section
 // Variables for Conditions
 
@@ -154,6 +142,23 @@ rangeHeight = upper3BandValue - lower3BandValue
 stalledRange = (hour > 1 and (rangeHeight < 750))
 
 
+bandsSize = round(( (lower3BandValue - upper3BandValue) / lower3BandValue) * 100,2)
+
+
+
+
+
+pctgainlabel9 = label.new(timenow + 1000000, upper3BandValue, xloc = xloc.bar_time, text = " "+tostring(round(bandsSize,1))+ "%", color = color.white, style=label.style_none,size=size.normal, textcolor = color.white)
+label.delete(pctgainlabel9[1])
+
+btcAmt = 0.1
+pctSinceLower2 = round(( (close - lower2BandValue) / lower2BandValue) * 100,2)
+gainSinceLower2 = ( (close - lower2BandValue) / lower2BandValue) * btcAmt
+
+gainSinceLower = label.new(timenow + 1000000, lower2BandValue, xloc = xloc.bar_time, text = " "+tostring(round(pctSinceLower2,1))+ "% " + "("+ tostring(round(gainSinceLower2,4)) + ")", color = color.white, style=label.style_none,size=size.normal, textcolor = color.white)
+label.delete(gainSinceLower[1])
+
+// plot(percentLong, color=color.yellow)
 
 //Consecutive crosses
 lower3Cross = cross(close,lower3BandValue)
@@ -165,22 +170,8 @@ upper2Cross = cross(close,upper2BandValue)
 upper3Cross = cross(close,upper3BandValue)
 
 
-var countlower3Cross = 0
-var countlower2Cross = 0
-var countlowerCross = 0
-var countvwapCross = 0
-var countupperCross = 0
-var countupper2Cross = 0
-var countupper3Cross = 0
 
 
-countlower3Cross := (lower2Cross or lowerCross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lower3Cross ? countlower3Cross + 1 : countlower3Cross
-countlower2Cross := ( lower3Cross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lower2Cross ? countlower2Cross + 1 : countlower2Cross
-countlowerCross := (lower3Cross or lower2Cross or vwapCross or upperCross or upper2Cross or upper3Cross) ? 0 : lowerCross ? countlowerCross + 1 : countlowerCross
-countvwapCross := (lower3Cross or lower2Cross or lowerCross or upperCross or upper2Cross or upper3Cross) ? 0 : vwapCross ? countvwapCross + 1 : countvwapCross
-countupperCross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upper2Cross or upper3Cross) ? 0 : upperCross ? countupperCross + 1 : countupperCross
-countupper2Cross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upperCross or upper3Cross) ? 0 : upper2Cross ? countupper2Cross + 1 : countupper2Cross
-countupper3Cross := (lower3Cross or lower2Cross or lowerCross or vwapCross or upperCross or upper2Cross) ? 0 : upper3Cross ? countupper3Cross + 1 : countupper3Cross
 
 
 
@@ -190,18 +181,28 @@ lastLower2Cross = barssince(crossover(close,lower2BandValue))
 
 lastLower2Touch = barssince(low < lower2BandValue)
 longCond2 = crossover(close,upperBandValue) and   (lastUpper2Cross >  lastLower2Cross )
+shortCond2 = crossunder(close,lowerBandValue) and   (lastLower2Cross >  lastUpper2Cross )
 
 priceDrop =  barssince((close[1] > open[1]) and close[1] >= open and (open > close))
 
-longCondPriceDrop = priceDrop > 1 ?  (open[priceDrop] - close ) > 350 ? close : na : na
+longCondPriceDrop = priceDrop > .8 ?  (open[priceDrop] - close ) > 350 ? close : na : na
 
 
-plotshape(longCondPriceDrop, title=".", text=".", textcolor=color.white, style=shape.labelup, location=location.belowbar, color=color.purple, transp=0, size=size.tiny)
+// plotshape(longCondPriceDrop, title=".", text=".", textcolor=color.white, style=shape.labelup, location=location.belowbar, color=color.purple, transp=0, size=size.tiny)
 
 
-longCond =  (lastLower2Touch < 200  and lastLower2Touch > 2) and ( (  (upper2BandValue - lower2BandValue) > 200)  and (percentLong <=25 or (close < lower2BandValue  and barstate.isrealtime) or low  < lower2BandValue  or(longCond2)    )) and stalledRange == false and (countlower2Cross < 1) and (hour >= 1 )
+minOuterBarHeight = input(1, title="Minimum Outer Bar Height (in pct)", group="VWAP Settings")
+outerBandHeight = (  ( (upper2BandValue - lower2BandValue) / close) * 100 )
 
-shortCond =( (( high - low[barssince(longCond)])/ low[barssince(longCond)]) *1000) > 10
+
+
+longCond =   ( (outerBandHeight > minOuterBarHeight)  and (percentLong <=25 or (close < lower2BandValue  and barstate.isrealtime) or low  < lower2BandValue  or(longCond2)    ))
+
+// longCond =  (lastLower2Touch < 200  and lastLower2Touch > 2) and ( (  (upper2BandValue - lower2BandValue) > 200)  and (percentLong <=25 or (close < lower2BandValue  and barstate.isrealtime) or low  < lower2BandValue  or(longCond2)    )) and stalledRange == false and (hour >= 1 )
+
+// shortCond =( (( high - low[barssince(longCond)])/ low[barssince(longCond)]) *1000) > 10
+shortCond =   ( (outerBandHeight > minOuterBarHeight)  and ( (close > upper2BandValue  and barstate.isrealtime) or close  > upper2BandValue     )) 
+
 
 CondInit = 0
 CondInit := longCond ? 1 : shortCond ? -1 : CondInit[1]
@@ -210,39 +211,7 @@ shortCondition = shortCond and CondInit[1] == 1
 
 
 
-// STOP LOSS
-stopLossBars = 7
-lineLow1 = CondInit[1] == -1 ? lowest(low,stopLossBars) : lowest(low,stopLossBars) 
-lineHigh1 = CondInit[1] == 1 ? highest(high,stopLossBars) : highest(high,stopLossBars)
-stopLossLine = lineHigh1-(lineHigh1 * .008)
 
-
-// plot(lineHigh1, title="High Price Line", linewidth = 2, color =color.new(color.blue, 80))
-// plot( stopLossLine,  title="Stop Price Line", linewidth = 2, color =color.new(color.purple, 80))
-// plot(lineLow1, title="Low Price Line", linewidth = 2, color =color.new(color.white, 80))
-
-
-
-
-// VWAP Level Line
-lineDir = extend.both
-lineColor = color.new(color.white,50)
-lenBack = 1
-lenBack2 = lenBack -1
-
-var ln_max = line.new(na, na, na, na, extend=lineDir, color=lineColor)
-H2=max(vwapValue[lenBack], vwapValue[lenBack2])
-
-// V0 = vwapValue[0]
-// V1 = vwapValue[1]
-V0 = H2
-V1 = H2
-
-showLevel = input(false, title="Show VWAP Level Line", group="VWAP SETTINGS")
-
-if bar_index > 1 and showLevel
-    line.set_xy1(ln_max, bar_index - lenBack, V0)
-    line.set_xy2(ln_max, bar_index, V1)
 
 
 
